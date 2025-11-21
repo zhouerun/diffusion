@@ -11,7 +11,10 @@ from PIL import Image
 import os
 from torchvision.utils import make_grid
 import argparse
-
+import json
+import pandas as pd
+from datetime import datetime
+import os
 # ==================== 基础组件定义 ====================
 
 def exists(x):
@@ -506,8 +509,32 @@ def train_model(config):
     
     return model, diffusion, losses
 
-def run_experiment(config, experiment_name):
+
+
+
+
+# ==================== 实验配置 ====================
+
+class Config:
+    def __init__(self, timesteps=200, beta_schedule='linear', sampling_method='both', 
+                 model_dim=64, img_size=32, batch_size=128, lr=1e-4, epochs=20):
+        self.timesteps = timesteps
+        self.beta_schedule = beta_schedule
+        self.sampling_method = sampling_method
+        self.model_dim = model_dim
+        self.img_size = img_size
+        self.batch_size = batch_size
+        self.lr = lr
+        self.epochs = epochs
+    
+    def __repr__(self):
+        return f"Config(timesteps={self.timesteps}, beta_schedule='{self.beta_schedule}', sampling_method='{self.sampling_method}')"
+# 修改run_experiment函数以接受保存目录参数
+def run_experiment(config, experiment_name, save_dir=None):
     """运行单个实验"""
+    if save_dir is None:
+        save_dir = "."
+    
     print(f"\n=== 运行实验: {experiment_name} ===")
     print(f"配置: {config}")
     
@@ -532,7 +559,6 @@ def run_experiment(config, experiment_name):
         ddim_final = ddim_samples[-1]
     
     # 计算FID（简化版）
-    # 在实际应用中，应该使用真实MNIST测试集图像来计算FID
     transform = transforms.Compose([
         transforms.Resize((config.img_size, config.img_size)),
         transforms.ToTensor(),
@@ -565,7 +591,7 @@ def run_experiment(config, experiment_name):
         plt.imshow(grid.permute(1, 2, 0))
         plt.title(f"DDPM Samples - {experiment_name}")
         plt.axis('off')
-        plt.savefig(f'{experiment_name}_ddpm_samples.png')
+        plt.savefig(os.path.join(save_dir, f'{experiment_name}_ddpm_samples.png'))
         plt.close()
     
     if config.sampling_method == 'ddim' or config.sampling_method == 'both':
@@ -574,7 +600,7 @@ def run_experiment(config, experiment_name):
         plt.imshow(grid.permute(1, 2, 0))
         plt.title(f"DDIM Samples - {experiment_name}")
         plt.axis('off')
-        plt.savefig(f'{experiment_name}_ddim_samples.png')
+        plt.savefig(os.path.join(save_dir, f'{experiment_name}_ddim_samples.png'))
         plt.close()
     
     # 绘制损失曲线
@@ -583,12 +609,13 @@ def run_experiment(config, experiment_name):
     plt.title(f'Training Loss - {experiment_name}')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.savefig(f'{experiment_name}_loss.png')
+    plt.savefig(os.path.join(save_dir, f'{experiment_name}_loss.png'))
     plt.close()
     
     return results
 
-def demonstrate_latent_quality(best_model, best_diffusion, config):
+# 修改demonstrate_latent_quality函数以接受保存目录
+def demonstrate_latent_quality(best_model, best_diffusion, config, save_dir):
     """展示潜在向量质量对生成图像的影响"""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     best_model.eval()
@@ -630,28 +657,32 @@ def demonstrate_latent_quality(best_model, best_diffusion, config):
             ax.axis('off')
     
     plt.tight_layout()
-    plt.savefig('latent_quality_experiment.png')
+    plt.savefig(os.path.join(save_dir, 'latent_quality_experiment.png'))
     plt.close()
-
-# ==================== 实验配置 ====================
-
-class Config:
-    def __init__(self, timesteps=200, beta_schedule='linear', sampling_method='both', 
-                 model_dim=64, img_size=32, batch_size=128, lr=1e-4, epochs=20):
-        self.timesteps = timesteps
-        self.beta_schedule = beta_schedule
-        self.sampling_method = sampling_method
-        self.model_dim = model_dim
-        self.img_size = img_size
-        self.batch_size = batch_size
-        self.lr = lr
-        self.epochs = epochs
     
-    def __repr__(self):
-        return f"Config(timesteps={self.timesteps}, beta_schedule='{self.beta_schedule}', sampling_method='{self.sampling_method}')"
+    # 保存潜在质量实验的描述
+    desc_path = os.path.join(save_dir, 'experiment_description.txt')
+    with open(desc_path, 'w') as f:
+        f.write("潜在向量质量实验\n")
+        f.write("=" * 30 + "\n\n")
+        f.write("这个实验展示了从不同尺度的噪声开始生成图像的效果。\n")
+        f.write("噪声尺度分别为: 0.5, 1.0, 2.0, 4.0\n\n")
+        f.write("结论:\n")
+        f.write("- 尺度=1.0: 标准高斯噪声，应该产生最佳质量图像\n")
+        f.write("- 尺度<1.0: 噪声太小，可能导致模糊或缺乏多样性\n")
+        f.write("- 尺度>1.0: 噪声太大，可能导致图像质量下降\n")
 
+
+    
+
+
+# 在main函数中添加结果保存功能
 def main():
     """运行所有实验"""
+    # 创建结果目录
+    results_dir = f"experiment_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    os.makedirs(results_dir, exist_ok=True)
+    
     # 实验配置
     experiments = [
         # 基线配置
@@ -689,17 +720,46 @@ def main():
     # 运行所有实验
     for config, name in zip(experiments, experiment_names):
         try:
-            results = run_experiment(config, name)
+            # 为每个实验创建子目录
+            exp_dir = os.path.join(results_dir, name)
+            os.makedirs(exp_dir, exist_ok=True)
+            
+            # 修改run_experiment函数调用，传入保存目录
+            results = run_experiment(config, name, exp_dir)
             all_results.append(results)
             print(f"实验 {name} 完成!")
             print(f"FID分数: {results['fid_scores']}")
+            
+            # 保存每个实验的详细结果
+            exp_results_path = os.path.join(exp_dir, f"{name}_detailed_results.json")
+            with open(exp_results_path, 'w') as f:
+                # 将配置对象转换为可序列化的字典
+                config_dict = {
+                    'timesteps': config.timesteps,
+                    'beta_schedule': config.beta_schedule,
+                    'sampling_method': config.sampling_method,
+                    'model_dim': config.model_dim,
+                    'img_size': config.img_size,
+                    'batch_size': config.batch_size,
+                    'lr': config.lr,
+                    'epochs': config.epochs
+                }
+                
+                exp_data = {
+                    'experiment_name': name,
+                    'config': config_dict,
+                    'losses': results['losses'],
+                    'fid_scores': results['fid_scores'],
+                    'final_loss': results['losses'][-1] if results['losses'] else None
+                }
+                json.dump(exp_data, f, indent=2)
+                
         except Exception as e:
             print(f"实验 {name} 失败: {e}")
     
     # 生成总结报告
     print("\n=== 实验总结 ===")
-    print("实验名称 | DDPM FID | DDIM FID | 最终损失")
-    print("-" * 50)
+    summary_data = []
     
     for results in all_results:
         name = results['experiment_name']
@@ -709,19 +769,96 @@ def main():
         ddpm_fid = fid_scores.get('ddpm', 'N/A')
         ddim_fid = fid_scores.get('ddim', 'N/A')
         
+        summary_data.append({
+            'experiment_name': name,
+            'ddpm_fid': ddpm_fid if ddpm_fid != 'N/A' else None,
+            'ddim_fid': ddim_fid if ddim_fid != 'N/A' else None,
+            'final_loss': final_loss,
+            'timesteps': results['config'].timesteps,
+            'beta_schedule': results['config'].beta_schedule,
+            'sampling_method': results['config'].sampling_method
+        })
+        
         print(f"{name:15} | {ddpm_fid:8.2f} | {ddim_fid:8.2f} | {final_loss:.4f}")
     
+    # 保存总结报告为CSV和JSON
+    summary_df = pd.DataFrame(summary_data)
+    
+    # CSV格式
+    csv_path = os.path.join(results_dir, "experiment_summary.csv")
+    summary_df.to_csv(csv_path, index=False)
+    
+    # JSON格式
+    json_path = os.path.join(results_dir, "experiment_summary.json")
+    summary_df.to_json(json_path, indent=2, orient='records')
+    
+    # 保存详细的文本总结报告
+    txt_path = os.path.join(results_dir, "experiment_summary.txt")
+    with open(txt_path, 'w') as f:
+        f.write("=== 扩散模型实验总结报告 ===\n")
+        f.write(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 50 + "\n\n")
+        
+        f.write("实验配置:\n")
+        f.write("-" * 30 + "\n")
+        for exp in summary_data:
+            f.write(f"实验名称: {exp['experiment_name']}\n")
+            f.write(f"  时间步数: {exp['timesteps']}\n")
+            f.write(f"  噪声调度: {exp['beta_schedule']}\n")
+            f.write(f"  采样方法: {exp['sampling_method']}\n")
+            f.write(f"  最终损失: {exp['final_loss']:.4f}\n")
+            if exp['ddpm_fid'] is not None:
+                f.write(f"  DDPM FID: {exp['ddpm_fid']:.2f}\n")
+            if exp['ddim_fid'] is not None:
+                f.write(f"  DDIM FID: {exp['ddim_fid']:.2f}\n")
+            f.write("\n")
+        
+        # 找出最佳实验
+        valid_results = [exp for exp in summary_data if exp['ddpm_fid'] is not None or exp['ddim_fid'] is not None]
+        if valid_results:
+            # 使用DDPM FID作为主要比较指标，如果不可用则用DDIM FID
+            def get_best_fid(exp):
+                return exp['ddpm_fid'] if exp['ddpm_fid'] is not None else exp['ddim_fid']
+            
+            best_exp = min(valid_results, key=lambda x: get_best_fid(x))
+            f.write("\n最佳实验:\n")
+            f.write("-" * 20 + "\n")
+            f.write(f"实验名称: {best_exp['experiment_name']}\n")
+            f.write(f"时间步数: {best_exp['timesteps']}\n")
+            f.write(f"噪声调度: {best_exp['beta_schedule']}\n")
+            f.write(f"采样方法: {best_exp['sampling_method']}\n")
+            if best_exp['ddpm_fid'] is not None:
+                f.write(f"DDPM FID: {best_exp['ddpm_fid']:.2f}\n")
+            if best_exp['ddim_fid'] is not None:
+                f.write(f"DDIM FID: {best_exp['ddim_fid']:.2f}\n")
+    
+    print(f"\n所有结果已保存到目录: {results_dir}")
+    print(f"总结报告: {txt_path}")
+    print(f"CSV格式: {csv_path}")
+    print(f"JSON格式: {json_path}")
+    
     # 找到最佳模型进行潜在质量实验
-    best_result = min(all_results, key=lambda x: min(x['fid_scores'].values()) if x['fid_scores'] else float('inf'))
-    best_config = best_result['config']
-    
-    print(f"\n最佳模型: {best_result['experiment_name']}")
-    print(f"最佳FID: {best_result['fid_scores']}")
-    
-    # 重新训练最佳模型进行潜在质量实验
-    print("\n重新训练最佳模型进行潜在质量实验...")
-    best_model, best_diffusion, _ = train_model(best_config)
-    demonstrate_latent_quality(best_model, best_diffusion, best_config)
+    valid_results = [r for r in all_results if r['fid_scores']]
+    if valid_results:
+        best_result = min(valid_results, key=lambda x: min(x['fid_scores'].values()))
+        best_config = best_result['config']
+        
+        print(f"\n最佳模型: {best_result['experiment_name']}")
+        print(f"最佳FID: {best_result['fid_scores']}")
+        
+        # 重新训练最佳模型进行潜在质量实验
+        print("\n重新训练最佳模型进行潜在质量实验...")
+        best_model, best_diffusion, _ = train_model(best_config)
+        
+        # 保存潜在质量实验结果
+        latent_dir = os.path.join(results_dir, "latent_quality_experiment")
+        os.makedirs(latent_dir, exist_ok=True)
+        
+        demonstrate_latent_quality(best_model, best_diffusion, best_config, latent_dir)
+        
+        print(f"潜在质量实验结果保存到: {latent_dir}")
+
+
 
 if __name__ == "__main__":
     # 确保必要的导入
