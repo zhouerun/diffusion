@@ -686,22 +686,22 @@ def main():
     # 实验配置
     experiments = [
         # 基线配置
-        Config(timesteps=200, beta_schedule='linear', sampling_method='both', epochs=10),
+        Config(timesteps=200, beta_schedule='linear', sampling_method='both', epochs=5),
         
         # 改变噪声调度
-        Config(timesteps=200, beta_schedule='cosine', sampling_method='both', epochs=10),
-        Config(timesteps=200, beta_schedule='quadratic', sampling_method='both', epochs=10),
+        Config(timesteps=200, beta_schedule='cosine', sampling_method='both', epochs=5),
+        Config(timesteps=200, beta_schedule='quadratic', sampling_method='both', epochs=5),
         
         # 改变时间步数
-        Config(timesteps=100, beta_schedule='linear', sampling_method='both', epochs=10),
-        Config(timesteps=500, beta_schedule='linear', sampling_method='both', epochs=10),
+        Config(timesteps=100, beta_schedule='linear', sampling_method='both', epochs=5),
+        Config(timesteps=500, beta_schedule='linear', sampling_method='both', epochs=5),
         
         # 改变采样方法
-        Config(timesteps=200, beta_schedule='linear', sampling_method='ddpm', epochs=10),
-        Config(timesteps=200, beta_schedule='linear', sampling_method='ddim', epochs=10),
+        Config(timesteps=200, beta_schedule='linear', sampling_method='ddpm', epochs=5),
+        Config(timesteps=200, beta_schedule='linear', sampling_method='ddim', epochs=5),
         
         # 额外实验：余弦调度+更多时间步
-        Config(timesteps=500, beta_schedule='cosine', sampling_method='both', epochs=10),
+        Config(timesteps=500, beta_schedule='cosine', sampling_method='both', epochs=5),
     ]
     
     experiment_names = [
